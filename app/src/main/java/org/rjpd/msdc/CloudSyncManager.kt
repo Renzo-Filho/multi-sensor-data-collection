@@ -1,6 +1,7 @@
 package org.rjpd.msdc
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceManager
@@ -21,6 +22,9 @@ internal const val PREF_CUSTOM_UPLOAD_URL = "custom_upload_url"
 internal const val PREF_CUSTOM_UPLOAD_TOKEN = "custom_upload_token"
 internal const val PREF_CLOUD_STORAGE_TREE_URI = "cloud_storage_tree_uri"
 internal const val PREF_SYNCED_DATASET_NAMES = "synced_dataset_names"
+internal const val DESTINATION_HTTP = "http"
+internal const val DESTINATION_SAF = "saf"
+private const val KEY_SYNCED = "synced"
 
 private const val CONNECT_TIMEOUT_MS = 30_000
 private const val READ_TIMEOUT_MS = 300_000
@@ -156,32 +160,60 @@ object CloudSyncManager {
         } else {
             editor.remove(PREF_CLOUD_STORAGE_TREE_URI)
         }
-        if (oldUri != uri?.toString()) {
-            editor.remove(PREF_SYNCED_DATASET_NAMES)
-        }
         editor.apply()
-    }
-
-    fun clearSyncedDatasetNames(context: Context) {
-        PreferenceManager.getDefaultSharedPreferences(context).edit()
-            .remove(PREF_SYNCED_DATASET_NAMES)
-            .apply()
-    }
-
-    fun isDatasetSynced(context: Context, datasetName: String): Boolean {
-        if (getCloudSyncMode(context) == CloudSyncMode.NOT_CONFIGURED) {
-            return false
+        if (oldUri != uri?.toString()) {
+            clearSyncedDatasetNames(context, DESTINATION_SAF)
         }
-        val syncedSet = PreferenceManager.getDefaultSharedPreferences(context)
-            .getStringSet(PREF_SYNCED_DATASET_NAMES, emptySet()) ?: emptySet()
-        return syncedSet.contains(datasetName)
     }
+
+    fun activeDestinationId(context: Context): String? = when (getCloudSyncMode(context)) {
+        CloudSyncMode.HTTP_SERVER -> DESTINATION_HTTP
+        CloudSyncMode.SAF_STORAGE -> DESTINATION_SAF
+        CloudSyncMode.NOT_CONFIGURED -> null
+    }
+
+    // One prefs file per destination, so switching destinations keeps each one's sync state.
+    internal fun syncState(context: Context, destinationId: String): SharedPreferences {
+        migrateLegacySyncedNames(context)
+        return context.getSharedPreferences("sync_state_$destinationId", Context.MODE_PRIVATE)
+    }
+
+    // Before per-destination state, one set in the default prefs belonged to whichever of HTTP/SAF was configured.
+    private fun migrateLegacySyncedNames(context: Context) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val legacy = prefs.getStringSet(PREF_SYNCED_DATASET_NAMES, null) ?: return
+        val legacyDestination = when {
+            getCustomUploadUrl(context).isNotEmpty() -> DESTINATION_HTTP
+            getSafStorageUri(context) != null -> DESTINATION_SAF
+            else -> null
+        }
+        if (legacyDestination != null) {
+            context.getSharedPreferences("sync_state_$legacyDestination", Context.MODE_PRIVATE).edit()
+                .putStringSet(KEY_SYNCED, legacy.toSet())
+                .commit()
+        }
+        prefs.edit().remove(PREF_SYNCED_DATASET_NAMES).commit()
+    }
+
+    fun getSyncedDatasetNames(context: Context): Set<String> {
+        val destinationId = activeDestinationId(context) ?: return emptySet()
+        return syncState(context, destinationId).getStringSet(KEY_SYNCED, emptySet())?.toSet() ?: emptySet()
+    }
+
+    fun setSyncedDatasetNames(context: Context, names: Set<String>) {
+        val destinationId = activeDestinationId(context) ?: return
+        syncState(context, destinationId).edit().putStringSet(KEY_SYNCED, names).apply()
+    }
+
+    fun clearSyncedDatasetNames(context: Context, destinationId: String) {
+        syncState(context, destinationId).edit().remove(KEY_SYNCED).apply()
+    }
+
+    fun isDatasetSynced(context: Context, datasetName: String): Boolean =
+        datasetName in getSyncedDatasetNames(context)
 
     fun markDatasetAsSynced(context: Context, datasetName: String) {
-        val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
-        val currentSynced = sharedPreferences.getStringSet(PREF_SYNCED_DATASET_NAMES, emptySet())?.toMutableSet() ?: mutableSetOf()
-        currentSynced.add(datasetName)
-        sharedPreferences.edit().putStringSet(PREF_SYNCED_DATASET_NAMES, currentSynced).apply()
+        setSyncedDatasetNames(context, getSyncedDatasetNames(context) + datasetName)
     }
 
     suspend fun syncDataset(context: Context, dataset: DatasetSummary): SyncResult {

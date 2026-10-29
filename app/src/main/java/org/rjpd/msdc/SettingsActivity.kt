@@ -85,7 +85,7 @@ class SettingsActivity : AppCompatActivity() {
                 val newUrl = (newValue as? String)?.trim() ?: ""
                 val oldUrl = CloudSyncManager.getCustomUploadUrl(requireContext())
                 if (newUrl != oldUrl) {
-                    CloudSyncManager.clearSyncedDatasetNames(requireContext())
+                    CloudSyncManager.clearSyncedDatasetNames(requireContext(), DESTINATION_HTTP)
                 }
                 true
             }

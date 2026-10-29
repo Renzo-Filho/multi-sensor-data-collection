@@ -179,9 +179,7 @@ class HistoryActivity : AppCompatActivity() {
             binding.syncStatusBanner.visibility = View.GONE
 
             if (state.isFinished) {
-                val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
-                val syncedDatasetNames = sharedPreferences.getStringSet(PREF_SYNCED_DATASET_NAMES, emptySet()) ?: emptySet()
-                historyAdapter?.updateSyncedDatasetNames(syncedDatasetNames)
+                historyAdapter?.updateSyncedDatasetNames(CloudSyncManager.getSyncedDatasetNames(this))
                 invalidateOptionsMenu()
                 CloudSyncManager.resetProgress()
 
@@ -232,14 +230,13 @@ class HistoryActivity : AppCompatActivity() {
         val treeUri = CloudSyncManager.getSafStorageUri(this) ?: return
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this@HistoryActivity)
-            val currentSynced = sharedPreferences.getStringSet(PREF_SYNCED_DATASET_NAMES, emptySet())?.toMutableSet() ?: mutableSetOf()
+            val currentSynced = CloudSyncManager.getSyncedDatasetNames(this@HistoryActivity).toMutableSet()
 
             val rootDoc = DocumentFile.fromTreeUri(this@HistoryActivity, treeUri)
             if (rootDoc == null || !rootDoc.exists()) {
                 if (currentSynced.isNotEmpty()) {
                     currentSynced.clear()
-                    sharedPreferences.edit().remove(PREF_SYNCED_DATASET_NAMES).apply()
+                    CloudSyncManager.clearSyncedDatasetNames(this@HistoryActivity, DESTINATION_SAF)
                     withContext(Dispatchers.Main) {
                         if (!isFinishing && !isDestroyed) {
                             historyAdapter?.updateSyncedDatasetNames(emptySet())
@@ -266,7 +263,7 @@ class HistoryActivity : AppCompatActivity() {
             }
 
             if (changed) {
-                sharedPreferences.edit().putStringSet(PREF_SYNCED_DATASET_NAMES, currentSynced).apply()
+                CloudSyncManager.setSyncedDatasetNames(this@HistoryActivity, currentSynced)
                 withContext(Dispatchers.Main) {
                     if (!isFinishing && !isDestroyed) {
                         historyAdapter?.updateSyncedDatasetNames(currentSynced)
@@ -295,7 +292,7 @@ class HistoryActivity : AppCompatActivity() {
 
             val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
             val viewedDatasetNames = sharedPreferences.getStringSet(PREF_VIEWED_DATASET_NAMES, emptySet()) ?: emptySet()
-            val syncedDatasetNames = sharedPreferences.getStringSet(PREF_SYNCED_DATASET_NAMES, emptySet()) ?: emptySet()
+            val syncedDatasetNames = CloudSyncManager.getSyncedDatasetNames(this)
 
             val savedExpandedKeys = getExpandedGroupKeys()
             val hasSavedState = savedExpandedKeys.isNotEmpty()
