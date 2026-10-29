@@ -230,6 +230,15 @@
     <string name="s3_test_delete">Delete</string>
     <string name="s3_test_left_behind">Test object left at %1$s</string>
     <string name="s3_delete_destination_title">Delete destination</string>
+    <string name="auto_upload_title">Upload automatically in background</string>
+    <string name="auto_upload_on">New collections are uploaded when the conditions below are met</string>
+    <string name="auto_upload_off">Only collections you sync are uploaded; interrupted syncs still finish in background</string>
+    <string name="upload_wifi_only_title">Background uploads on Wi-Fi only</string>
+    <string name="upload_wifi_only_on">Waits for an unmetered network</string>
+    <string name="upload_wifi_only_off">Uses any network, including mobile data</string>
+    <string name="upload_charging_only_title">Background uploads only while charging</string>
+    <string name="upload_charging_only_on">Waits until the phone is charging</string>
+    <string name="upload_charging_only_off">Uploads on battery too (not when the battery is low)</string>
     <string name="s3_active_destination_title">Active S3 destination</string>
     <string name="s3_active_destination_off">Off (use server URL or folder)</string>
     <string name="s3_key_template_invalid">The template must contain {dataset} or {timestamp}, so each collection gets its own keys</string>

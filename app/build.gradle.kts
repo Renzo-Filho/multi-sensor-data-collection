@@ -79,6 +79,7 @@ dependencies {
     implementation(libs.usb.serial)
     implementation(libs.osmdroid.android)
     implementation(libs.okhttp)
+    implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

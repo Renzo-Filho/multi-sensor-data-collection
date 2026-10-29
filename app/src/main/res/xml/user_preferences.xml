@@ -53,6 +53,30 @@
             app:defaultValue=""
             app:summary="%s"
             app:isPreferenceVisible="false" />
+
+        <SwitchPreferenceCompat
+            app:key="auto_upload"
+            app:title="@string/auto_upload_title"
+            app:defaultValue="false"
+            app:singleLineTitle="false"
+            app:summaryOn="@string/auto_upload_on"
+            app:summaryOff="@string/auto_upload_off" />
+
+        <SwitchPreferenceCompat
+            app:key="upload_wifi_only"
+            app:title="@string/upload_wifi_only_title"
+            app:defaultValue="true"
+            app:singleLineTitle="false"
+            app:summaryOn="@string/upload_wifi_only_on"
+            app:summaryOff="@string/upload_wifi_only_off" />
+
+        <SwitchPreferenceCompat
+            app:key="upload_charging_only"
+            app:title="@string/upload_charging_only_title"
+            app:defaultValue="false"
+            app:singleLineTitle="false"
+            app:summaryOn="@string/upload_charging_only_on"
+            app:summaryOff="@string/upload_charging_only_off" />
     </PreferenceCategory>
 
     <PreferenceCategory

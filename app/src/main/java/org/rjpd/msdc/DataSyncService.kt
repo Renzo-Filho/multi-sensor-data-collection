@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 
 private const val TAG = "DataSyncService"
@@ -181,43 +182,47 @@ class DataSyncService : Service() {
                     CloudSyncManager.finishSync(0, 0)
                     return@launch
                 }
+                CloudSyncManager.queueDatasets(this@DataSyncService, pendingDatasets.map { it.name })
+                SyncWorker.schedule(this@DataSyncService)
+                CloudSyncManager.syncMutex.withLock {
+                    val total = pendingDatasets.size
+                    CloudSyncManager.startProgress(total, pendingDatasets.first().name)
+                    updateNotificationProgress(1, total, pendingDatasets.first().name)
 
-                val total = pendingDatasets.size
-                CloudSyncManager.startProgress(total, pendingDatasets.first().name)
-                updateNotificationProgress(1, total, pendingDatasets.first().name)
+                    var successCount = 0
+                    var failureCount = 0
+                    var stopReason: String? = null
 
-                var successCount = 0
-                var failureCount = 0
-                var stopReason: String? = null
+                    for ((index, dataset) in pendingDatasets.withIndex()) {
+                        val current = index + 1
+                        CloudSyncManager.updateProgress(current, total, dataset.name)
+                        updateNotificationProgress(current, total, dataset.name)
 
-                for ((index, dataset) in pendingDatasets.withIndex()) {
-                    val current = index + 1
-                    CloudSyncManager.updateProgress(current, total, dataset.name)
-                    updateNotificationProgress(current, total, dataset.name)
+                        val result = CloudSyncManager.syncDataset(this@DataSyncService, dataset, progressReporter(current, total, dataset.name))
+                        if (result.success) {
+                            successCount++
+                        } else {
+                            failureCount++
+                        }
+                        CloudSyncManager.recordDatasetCompleted(dataset.name, result)
+                        if (result.stopRun) {
+                            Timber.tag(TAG).w("Stopping sync run: ${result.message}")
+                            stopReason = result.message
+                            break
+                        }
+                        CloudSyncManager.dequeueDataset(this@DataSyncService, dataset.name)
+                    }
 
-                    val result = CloudSyncManager.syncDataset(this@DataSyncService, dataset, progressReporter(current, total, dataset.name))
-                    if (result.success) {
-                        successCount++
+                    CloudSyncManager.finishSync(successCount, failureCount)
+                    val completionMsg = if (stopReason != null) {
+                        getString(R.string.sync_stopped_format, successCount, stopReason)
+                    } else if (failureCount == 0) {
+                        getString(R.string.sync_all_summary_format, total)
                     } else {
-                        failureCount++
+                        getString(R.string.sync_all_partial_failure_format, successCount, failureCount)
                     }
-                    CloudSyncManager.recordDatasetCompleted(dataset.name, result)
-                    if (result.stopRun) {
-                        Timber.tag(TAG).w("Stopping sync run: ${result.message}")
-                        stopReason = result.message
-                        break
-                    }
+                    showCompletionNotification(completionMsg)
                 }
-
-                CloudSyncManager.finishSync(successCount, failureCount)
-                val completionMsg = if (stopReason != null) {
-                    getString(R.string.sync_stopped_format, successCount, stopReason)
-                } else if (failureCount == 0) {
-                    getString(R.string.sync_all_summary_format, total)
-                } else {
-                    getString(R.string.sync_all_partial_failure_format, successCount, failureCount)
-                }
-                showCompletionNotification(completionMsg)
             } catch (e: Exception) {
                 Timber.tag(TAG).e(e, "Error occurred during sync all")
                 CloudSyncManager.finishSync(0, 1)
@@ -244,10 +249,15 @@ class DataSyncService : Service() {
                     return@launch
                 }
 
+                CloudSyncManager.queueDatasets(this@DataSyncService, listOf(target.name))
+                SyncWorker.schedule(this@DataSyncService)
                 CloudSyncManager.startProgress(1, target.name)
                 updateNotificationProgress(1, 1, target.name)
 
-                val result = CloudSyncManager.syncDataset(this@DataSyncService, target, progressReporter(1, 1, target.name))
+                val result = CloudSyncManager.syncMutex.withLock {
+                    CloudSyncManager.syncDataset(this@DataSyncService, target, progressReporter(1, 1, target.name))
+                }
+                if (!result.stopRun) CloudSyncManager.dequeueDataset(this@DataSyncService, target.name)
                 val successCount = if (result.success) 1 else 0
                 val failureCount = if (result.success) 0 else 1
                 CloudSyncManager.recordDatasetCompleted(target.name, result)

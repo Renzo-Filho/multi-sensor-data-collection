@@ -16,6 +16,7 @@ import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
 import timber.log.Timber
 
 internal const val PREF_CUSTOM_UPLOAD_URL = "custom_upload_url"
@@ -27,6 +28,7 @@ internal const val DESTINATION_HTTP = "http"
 internal const val DESTINATION_SAF = "saf"
 private const val KEY_SYNCED = "synced"
 private const val ERROR_PREFIX = "error:"
+private const val KEY_QUEUED = "queued"
 
 private const val CONNECT_TIMEOUT_MS = 30_000
 private const val READ_TIMEOUT_MS = 300_000
@@ -37,7 +39,10 @@ private const val UPLOAD_CACHE_DIR = "upload_cache"
 private const val ZIP_MIME_TYPE = "application/zip"
 
 // Secrets and sync bookkeeping never go into a dataset's metadata.json.
-private val PREFS_EXCLUDED_FROM_METADATA = setOf(PREF_CUSTOM_UPLOAD_TOKEN, PREF_SYNCED_DATASET_NAMES, PREF_ACTIVE_S3_DESTINATION)
+private val PREFS_EXCLUDED_FROM_METADATA = setOf(
+    PREF_CUSTOM_UPLOAD_TOKEN, PREF_SYNCED_DATASET_NAMES, PREF_ACTIVE_S3_DESTINATION,
+    PREF_AUTO_UPLOAD, PREF_UPLOAD_WIFI_ONLY, PREF_UPLOAD_CHARGING_ONLY
+)
 
 fun preferencesForMetadata(all: Map<String, *>): MutableMap<String, Any?> =
     all.filterKeys { it !in PREFS_EXCLUDED_FROM_METADATA }.toMutableMap()
@@ -75,6 +80,13 @@ object CloudSyncManager {
 
     private val _syncProgress = MutableStateFlow(SyncProgressState())
     val syncProgress: StateFlow<SyncProgressState> = _syncProgress.asStateFlow()
+
+    /** One sync at a time: the foreground service and the background worker share it. */
+    val syncMutex = Mutex()
+
+    /** True from the start of a recording until its files are moved and zipped; background uploads wait. */
+    @Volatile
+    var recordingInProgress = false
 
     fun startProgress(total: Int, initialDatasetName: String = "") {
         _syncProgress.value = SyncProgressState(
@@ -237,6 +249,26 @@ object CloudSyncManager {
 
     fun markDatasetAsSynced(context: Context, datasetName: String) {
         setSyncedDatasetNames(context, getSyncedDatasetNames(context) + datasetName)
+    }
+
+    // Collections the user asked to sync, kept until handled so a sync killed midway finishes in the background.
+    fun queueDatasets(context: Context, names: Collection<String>) {
+        val destinationId = activeDestinationId(context) ?: return
+        val state = syncState(context, destinationId)
+        val queued = state.getStringSet(KEY_QUEUED, emptySet()).orEmpty() + names
+        state.edit().putStringSet(KEY_QUEUED, queued).commit()
+    }
+
+    fun dequeueDataset(context: Context, name: String) {
+        val destinationId = activeDestinationId(context) ?: return
+        val state = syncState(context, destinationId)
+        val queued = state.getStringSet(KEY_QUEUED, emptySet()).orEmpty() - name
+        state.edit().putStringSet(KEY_QUEUED, queued).commit()
+    }
+
+    fun isDatasetQueued(context: Context, name: String): Boolean {
+        val destinationId = activeDestinationId(context) ?: return false
+        return name in syncState(context, destinationId).getStringSet(KEY_QUEUED, emptySet()).orEmpty()
     }
 
     /** Last sync error per dataset for the active destination. */

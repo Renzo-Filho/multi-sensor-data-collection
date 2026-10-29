@@ -106,6 +106,14 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
             }
 
             setupCloudStorageFolderPreference()
+
+            for (key in listOf(PREF_AUTO_UPLOAD, PREF_UPLOAD_WIFI_ONLY, PREF_UPLOAD_CHARGING_ONLY)) {
+                findPreference<Preference>(key)?.setOnPreferenceChangeListener { _, _ ->
+                    // Posted so the worker is rescheduled with the value just saved.
+                    view?.post { SyncWorker.schedule(requireContext(), replace = true) }
+                    true
+                }
+            }
         }
 
         override fun onResume() {
