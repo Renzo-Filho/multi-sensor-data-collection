@@ -30,6 +30,12 @@ private const val TAG = "CloudSyncManager"
 private const val UPLOAD_CACHE_DIR = "upload_cache"
 private const val ZIP_MIME_TYPE = "application/zip"
 
+// Secrets and sync bookkeeping never go into a dataset's metadata.json.
+private val PREFS_EXCLUDED_FROM_METADATA = setOf(PREF_CUSTOM_UPLOAD_TOKEN, PREF_SYNCED_DATASET_NAMES)
+
+fun preferencesForMetadata(all: Map<String, *>): MutableMap<String, Any?> =
+    all.filterKeys { it !in PREFS_EXCLUDED_FROM_METADATA }.toMutableMap()
+
 enum class CloudSyncMode {
     HTTP_SERVER,
     SAF_STORAGE,

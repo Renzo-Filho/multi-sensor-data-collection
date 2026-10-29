@@ -66,6 +66,14 @@ class DataSyncService : Service() {
         super.onDestroy()
     }
 
+    // Android 15+ limits dataSync foreground services to 6 hours a day; the service must stop within seconds.
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Timber.tag(TAG).w("Foreground service time limit reached, stopping sync")
+        activeSyncJob?.cancel()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
