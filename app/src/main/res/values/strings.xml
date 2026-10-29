@@ -139,7 +139,7 @@
     <string name="cloud_sync_not_configured_title">Sync Destination Not Configured</string>
     <string name="cloud_sync_not_configured_msg">Choose how you want to synchronize your datasets:</string>
     <string name="cloud_sync_option_folder">Select Folder (SAF / Drive)</string>
-    <string name="cloud_sync_option_server">Configure Server (Settings)</string>
+    <string name="cloud_sync_option_server">Configure Server or S3 (Settings)</string>
     <string name="sync_in_progress_title">Synchronizing&#8230;</string>
     <string name="sync_in_progress_msg">Syncing collection %1$s&#8230;</string>
     <string name="dataset_badge_new">NEW</string>
@@ -173,6 +173,11 @@
     <string name="data_sync_notification_title">Data Synchronization</string>
     <string name="data_sync_in_progress">Synchronizing datasets in background…</string>
     <string name="sync_already_running_toast">Sync is already in progress in background</string>
+    <string name="sync_bytes_progress_format">%1$s of %2$s</string>
+    <string name="sync_stopped_format">Sync stopped after %1$d collections: %2$s</string>
+    <string name="sync_last_error_title">Last Sync Failed</string>
+    <string name="sync_last_error_msg">Collection \'%1$s\' failed to sync:\n%2$s</string>
+    <string name="retry_action">Retry</string>
 
     <string name="s3_destinations_title">S3 Destinations</string>
     <string name="s3_destinations_summary">S3-compatible storage (RustFS, MinIO, Ceph, R2, B2, Wasabi, AWS)</string>
@@ -194,7 +199,7 @@
     <string name="s3_secret_set">Set (stored encrypted, tap to replace)</string>
     <string name="s3_secret_not_set">Not set</string>
     <string name="s3_key_template_title">Object key template</string>
-    <string name="s3_key_template_help">Placeholders: {directory}, {subdirectory}, {dataset}. Example: sao-paulo/bras/raw/{subdirectory}/{dataset}</string>
+    <string name="s3_key_template_help">Placeholders: {directory}, {subdirectory}, {dataset} (folder name) and {timestamp} (capture time). Example: sao-paulo/bras/raw/{subdirectory}/{timestamp}</string>
     <string name="s3_zip_mode_title">Upload as zip</string>
     <string name="s3_zip_mode_on">One .zip object per collection</string>
     <string name="s3_zip_mode_off">One object per file, keeping the folder layout</string>
@@ -225,5 +230,14 @@
     <string name="s3_test_delete">Delete</string>
     <string name="s3_test_left_behind">Test object left at %1$s</string>
     <string name="s3_delete_destination_title">Delete destination</string>
+    <string name="s3_active_destination_title">Active S3 destination</string>
+    <string name="s3_active_destination_off">Off (use server URL or folder)</string>
+    <string name="s3_key_template_invalid">The template must contain {dataset} or {timestamp}, so each collection gets its own keys</string>
+    <string name="s3_credentials_missing">S3 credentials are missing or can no longer be read. Enter them again in Settings.</string>
+    <string name="s3_sync_result">%1$d files uploaded, %2$d already on the server</string>
+    <string name="s3_access_denied">Access denied: check the access key, secret and bucket permissions (%1$s)</string>
+    <string name="s3_conflict">A different object already exists at %1$s. Enable overwrite in the destination settings to replace it.</string>
+    <string name="s3_verify_failed">Upload of %1$s could not be verified on the server</string>
+    <string name="s3_no_space_for_zip">Not enough free space to zip the collection. Upload it as files instead.</string>
     <string name="s3_delete_destination_msg">Delete \'%1$s\' and its stored credentials? Uploaded objects are not affected.</string>
 </resources>

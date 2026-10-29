@@ -9,6 +9,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceDataStore
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceManager
 import java.text.DateFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -77,6 +78,11 @@ class S3DestinationFragment : PreferenceFragmentCompat() {
                 valid
             }
         }
+        findPreference<EditTextPreference>("key_template")?.setOnPreferenceChangeListener { _, value ->
+            val valid = "{dataset}" in value as String || "{timestamp}" in value
+            if (!valid) Toast.makeText(context, R.string.s3_key_template_invalid, Toast.LENGTH_LONG).show()
+            valid
+        }
         findPreference<EditTextPreference>("part_size_mib")?.apply {
             setOnBindEditTextListener { it.inputType = InputType.TYPE_CLASS_NUMBER }
             summaryProvider = Preference.SummaryProvider<EditTextPreference> { getString(R.string.s3_part_size_summary, it.text) }
@@ -102,8 +108,17 @@ class S3DestinationFragment : PreferenceFragmentCompat() {
                 .setTitle(R.string.s3_delete_destination_title)
                 .setMessage(getString(R.string.s3_delete_destination_msg, destination.displayName))
                 .setPositiveButton(R.string.s3_delete_destination_title) { _, _ ->
-                    S3Destinations.delete(context, destination.id)
-                    parentFragmentManager.popBackStack()
+                    val deleted = destination
+                    lifecycleScope.launch {
+                        // Abort its unfinished uploads while the credentials still exist.
+                        withContext(Dispatchers.IO) { S3Sync.abortUnfinishedUploads(context, deleted) }
+                        S3Destinations.delete(context, deleted.id)
+                        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+                        if (prefs.getString(PREF_ACTIVE_S3_DESTINATION, null) == deleted.id) {
+                            prefs.edit().remove(PREF_ACTIVE_S3_DESTINATION).apply()
+                        }
+                        parentFragmentManager.popBackStack()
+                    }
                 }
                 .setNegativeButton(R.string.cancel, null)
                 .show()

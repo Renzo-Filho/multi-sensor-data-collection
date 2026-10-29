@@ -13,6 +13,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
@@ -291,7 +292,9 @@ class S3Client(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val retryable = (e is S3Exception && e.retryable) || (e is IOException && e !is FileChangedException)
+                // A rejected certificate will not fix itself; network drops (including TLS record errors) might.
+                val untrusted = e is SSLPeerUnverifiedException || generateSequence(e as Throwable) { it.cause }.any { it is CertificateException }
+                val retryable = (e is S3Exception && e.retryable) || (e is IOException && e !is FileChangedException && !untrusted)
                 if (!retryable || attempt >= maxAttempts) throw e
                 Timber.tag(TAG).w("Attempt $attempt failed, retrying: ${e.javaClass.simpleName}: ${e.message}")
                 if (!(e is S3Exception && e.code == "RequestTimeTooSkewed")) {

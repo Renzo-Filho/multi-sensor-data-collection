@@ -46,6 +46,13 @@
             app:title="@string/s3_destinations_title"
             app:summary="@string/s3_destinations_summary"
             app:fragment="org.rjpd.msdc.S3DestinationsFragment" />
+
+        <ListPreference
+            app:key="active_s3_destination"
+            app:title="@string/s3_active_destination_title"
+            app:defaultValue=""
+            app:summary="%s"
+            app:isPreferenceVisible="false" />
     </PreferenceCategory>
 
     <PreferenceCategory

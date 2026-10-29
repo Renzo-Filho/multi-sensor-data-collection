@@ -22,9 +22,11 @@ internal const val PREF_CUSTOM_UPLOAD_URL = "custom_upload_url"
 internal const val PREF_CUSTOM_UPLOAD_TOKEN = "custom_upload_token"
 internal const val PREF_CLOUD_STORAGE_TREE_URI = "cloud_storage_tree_uri"
 internal const val PREF_SYNCED_DATASET_NAMES = "synced_dataset_names"
+internal const val PREF_ACTIVE_S3_DESTINATION = "active_s3_destination"
 internal const val DESTINATION_HTTP = "http"
 internal const val DESTINATION_SAF = "saf"
 private const val KEY_SYNCED = "synced"
+private const val ERROR_PREFIX = "error:"
 
 private const val CONNECT_TIMEOUT_MS = 30_000
 private const val READ_TIMEOUT_MS = 300_000
@@ -35,7 +37,7 @@ private const val UPLOAD_CACHE_DIR = "upload_cache"
 private const val ZIP_MIME_TYPE = "application/zip"
 
 // Secrets and sync bookkeeping never go into a dataset's metadata.json.
-private val PREFS_EXCLUDED_FROM_METADATA = setOf(PREF_CUSTOM_UPLOAD_TOKEN, PREF_SYNCED_DATASET_NAMES)
+private val PREFS_EXCLUDED_FROM_METADATA = setOf(PREF_CUSTOM_UPLOAD_TOKEN, PREF_SYNCED_DATASET_NAMES, PREF_ACTIVE_S3_DESTINATION)
 
 fun preferencesForMetadata(all: Map<String, *>): MutableMap<String, Any?> =
     all.filterKeys { it !in PREFS_EXCLUDED_FROM_METADATA }.toMutableMap()
@@ -43,13 +45,16 @@ fun preferencesForMetadata(all: Map<String, *>): MutableMap<String, Any?> =
 enum class CloudSyncMode {
     HTTP_SERVER,
     SAF_STORAGE,
+    S3,
     NOT_CONFIGURED
 }
 
 data class SyncResult(
     val success: Boolean,
     val message: String,
-    val statusCode: Int? = null
+    val statusCode: Int? = null,
+    // Every remaining dataset would fail the same way (credentials, quota, no network): stop the run.
+    val stopRun: Boolean = false
 )
 
 data class SyncProgressState(
@@ -61,7 +66,9 @@ data class SyncProgressState(
     val lastResult: SyncResult? = null,
     val isFinished: Boolean = false,
     val successCount: Int = 0,
-    val failureCount: Int = 0
+    val failureCount: Int = 0,
+    val bytesDone: Long = 0,
+    val bytesTotal: Long = 0
 )
 
 object CloudSyncManager {
@@ -84,8 +91,14 @@ object CloudSyncManager {
             isSyncing = true,
             current = current,
             total = total,
-            currentDatasetName = datasetName
+            currentDatasetName = datasetName,
+            bytesDone = 0,
+            bytesTotal = 0
         )
+    }
+
+    fun updateBytes(bytesDone: Long, bytesTotal: Long) {
+        _syncProgress.value = _syncProgress.value.copy(bytesDone = bytesDone, bytesTotal = bytesTotal)
     }
 
     fun recordDatasetCompleted(datasetName: String, result: SyncResult) {
@@ -117,6 +130,9 @@ object CloudSyncManager {
     }
 
     fun getCloudSyncMode(context: Context): CloudSyncMode {
+        if (getActiveS3Destination(context) != null) {
+            return CloudSyncMode.S3
+        }
         val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
         val customUrl = sharedPreferences.getString(PREF_CUSTOM_UPLOAD_URL, null)?.trim()
         if (!customUrl.isNullOrEmpty()) {
@@ -129,6 +145,12 @@ object CloudSyncManager {
         }
 
         return CloudSyncMode.NOT_CONFIGURED
+    }
+
+    /** The S3 destination chosen in Settings, if it is complete; otherwise the server URL or folder applies. */
+    fun getActiveS3Destination(context: Context): S3Destination? {
+        val id = PreferenceManager.getDefaultSharedPreferences(context).getString(PREF_ACTIVE_S3_DESTINATION, null)
+        return S3Destinations.get(context, id)?.takeIf { S3Destinations.isComplete(context, it) }
     }
 
     fun getCustomUploadUrl(context: Context): String {
@@ -169,6 +191,7 @@ object CloudSyncManager {
     fun activeDestinationId(context: Context): String? = when (getCloudSyncMode(context)) {
         CloudSyncMode.HTTP_SERVER -> DESTINATION_HTTP
         CloudSyncMode.SAF_STORAGE -> DESTINATION_SAF
+        CloudSyncMode.S3 -> getActiveS3Destination(context)?.id
         CloudSyncMode.NOT_CONFIGURED -> null
     }
 
@@ -216,15 +239,43 @@ object CloudSyncManager {
         setSyncedDatasetNames(context, getSyncedDatasetNames(context) + datasetName)
     }
 
-    suspend fun syncDataset(context: Context, dataset: DatasetSummary): SyncResult {
-        return when (getCloudSyncMode(context)) {
+    /** Last sync error per dataset for the active destination. */
+    fun getDatasetErrors(context: Context): Map<String, String> {
+        val destinationId = activeDestinationId(context) ?: return emptyMap()
+        return syncState(context, destinationId).all
+            .filterKeys { it.startsWith(ERROR_PREFIX) }
+            .map { (key, value) -> key.removePrefix(ERROR_PREFIX) to value.toString() }
+            .toMap()
+    }
+
+    private fun recordDatasetError(context: Context, datasetName: String, error: String?) {
+        val destinationId = activeDestinationId(context) ?: return
+        val editor = syncState(context, destinationId).edit()
+        if (error == null) editor.remove(ERROR_PREFIX + datasetName) else editor.putString(ERROR_PREFIX + datasetName, error)
+        editor.apply()
+    }
+
+    suspend fun syncDataset(
+        context: Context,
+        dataset: DatasetSummary,
+        onProgress: (bytesDone: Long, bytesTotal: Long) -> Unit = { _, _ -> }
+    ): SyncResult {
+        val result = when (getCloudSyncMode(context)) {
             CloudSyncMode.HTTP_SERVER -> syncViaHttp(context, dataset)
             CloudSyncMode.SAF_STORAGE -> syncViaSaf(context, dataset)
+            CloudSyncMode.S3 -> {
+                val destination = getActiveS3Destination(context)!!
+                S3Sync.syncDataset(context, destination, dataset, onProgress).also {
+                    if (it.success) markDatasetAsSynced(context, dataset.name)
+                }
+            }
             CloudSyncMode.NOT_CONFIGURED -> SyncResult(
                 success = false,
                 message = "No cloud destination configured. Set a server URL or choose a folder."
             )
         }
+        recordDatasetError(context, dataset.name, if (result.success) null else result.message)
+        return result
     }
 
     private fun syncViaHttp(context: Context, dataset: DatasetSummary): SyncResult {

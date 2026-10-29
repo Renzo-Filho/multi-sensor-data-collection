@@ -34,6 +34,7 @@ class HistoryAdapter(
     private val directoryGroups: List<DirectoryGroup>,
     private val viewedDatasetNames: Set<String> = emptySet(),
     syncedDatasetNames: Set<String> = emptySet(),
+    failedDatasetNames: Set<String> = emptySet(),
     private val onItemClick: (DatasetSummary) -> Unit,
     private val onMapClick: ((DatasetSummary) -> Unit)? = null,
     private val onSyncClick: ((DatasetSummary) -> Unit)? = null,
@@ -43,6 +44,7 @@ class HistoryAdapter(
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val syncedDatasetNames = syncedDatasetNames.toMutableSet()
+    private val failedDatasetNames = failedDatasetNames.toMutableSet()
     private val displayItems = mutableListOf<HistoryListItem>()
 
     init {
@@ -50,7 +52,7 @@ class HistoryAdapter(
     }
 
     fun markDatasetSynced(datasetName: String) {
-        if (syncedDatasetNames.add(datasetName)) {
+        if (syncedDatasetNames.add(datasetName) or failedDatasetNames.remove(datasetName)) {
             val index = displayItems.indexOfFirst { it is HistoryListItem.DatasetCard && it.dataset.name == datasetName }
             if (index != -1) {
                 notifyItemChanged(index)
@@ -58,10 +60,12 @@ class HistoryAdapter(
         }
     }
 
-    fun updateSyncedDatasetNames(newSyncedNames: Set<String>) {
-        if (syncedDatasetNames != newSyncedNames) {
+    fun updateSyncedDatasetNames(newSyncedNames: Set<String>, newFailedNames: Set<String> = failedDatasetNames.toSet()) {
+        if (syncedDatasetNames != newSyncedNames || failedDatasetNames != newFailedNames) {
             syncedDatasetNames.clear()
             syncedDatasetNames.addAll(newSyncedNames)
+            failedDatasetNames.clear()
+            failedDatasetNames.addAll(newFailedNames)
             notifyDataSetChanged()
         }
     }
@@ -194,8 +198,9 @@ class HistoryAdapter(
                 binding.syncButton.setImageResource(R.drawable.ic_cloud_done)
                 binding.syncButton.setColorFilter(ContextCompat.getColor(itemView.context, R.color.icon_tint))
             } else {
+                val color = if (failedDatasetNames.contains(dataset.name)) R.color.red_700 else R.color.unsynced_orange
                 binding.syncButton.setImageResource(R.drawable.ic_cloud_upload)
-                binding.syncButton.setColorFilter(ContextCompat.getColor(itemView.context, R.color.unsynced_orange))
+                binding.syncButton.setColorFilter(ContextCompat.getColor(itemView.context, color))
             }
 
             val isViewed = viewedDatasetNames.contains(dataset.name)

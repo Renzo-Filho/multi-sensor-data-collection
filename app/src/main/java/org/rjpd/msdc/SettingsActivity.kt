@@ -111,6 +111,18 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         override fun onResume() {
             super.onResume()
             updateCloudFolderSummary()
+            updateActiveS3DestinationPreference()
+        }
+
+        private fun updateActiveS3DestinationPreference() {
+            val preference = findPreference<ListPreference>(PREF_ACTIVE_S3_DESTINATION) ?: return
+            val destinations = S3Destinations.list(requireContext()).filter { S3Destinations.isComplete(requireContext(), it) }
+            preference.entries = arrayOf(getString(R.string.s3_active_destination_off)) + destinations.map { it.displayName }
+            preference.entryValues = arrayOf("") + destinations.map { it.id }
+            if (preference.findIndexOfValue(preference.value) < 0) {
+                preference.value = ""
+            }
+            preference.isVisible = destinations.isNotEmpty()
         }
 
         private fun setupCloudStorageFolderPreference() {

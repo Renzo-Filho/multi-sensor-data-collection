@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.text.format.Formatter
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -161,7 +162,11 @@ class HistoryActivity : AppCompatActivity() {
             binding.syncProgressBar.visibility = View.VISIBLE
             binding.syncStatusBanner.visibility = View.VISIBLE
 
-            if (state.total > 0) {
+            if (state.bytesTotal > 0) {
+                binding.syncProgressBar.isIndeterminate = false
+                binding.syncProgressBar.max = 1000
+                binding.syncProgressBar.progress = (state.bytesDone * 1000 / state.bytesTotal).toInt()
+            } else if (state.total > 0) {
                 binding.syncProgressBar.isIndeterminate = false
                 binding.syncProgressBar.max = state.total
                 binding.syncProgressBar.progress = state.current
@@ -169,17 +174,28 @@ class HistoryActivity : AppCompatActivity() {
                 binding.syncProgressBar.isIndeterminate = true
             }
 
-            binding.syncStatusText.text = if (state.total > 1) {
+            var statusText = if (state.total > 1) {
                 getString(R.string.sync_all_in_progress_format, state.current, state.total, state.currentDatasetName)
             } else {
                 getString(R.string.sync_in_progress_msg, state.currentDatasetName)
             }
+            if (state.bytesTotal > 0) {
+                statusText += " " + getString(
+                    R.string.sync_bytes_progress_format,
+                    Formatter.formatShortFileSize(this, state.bytesDone),
+                    Formatter.formatShortFileSize(this, state.bytesTotal)
+                )
+            }
+            binding.syncStatusText.text = statusText
         } else {
             binding.syncProgressBar.visibility = View.GONE
             binding.syncStatusBanner.visibility = View.GONE
 
             if (state.isFinished) {
-                historyAdapter?.updateSyncedDatasetNames(CloudSyncManager.getSyncedDatasetNames(this))
+                historyAdapter?.updateSyncedDatasetNames(
+                    CloudSyncManager.getSyncedDatasetNames(this),
+                    CloudSyncManager.getDatasetErrors(this).keys
+                )
                 invalidateOptionsMenu()
                 CloudSyncManager.resetProgress()
 
@@ -343,6 +359,7 @@ class HistoryActivity : AppCompatActivity() {
                 directoryGroups = directoryGroups,
                 viewedDatasetNames = viewedDatasetNames,
                 syncedDatasetNames = syncedDatasetNames,
+                failedDatasetNames = CloudSyncManager.getDatasetErrors(this).keys,
                 onItemClick = { dataset ->
                     markDatasetAsViewed(dataset.name)
                     val intent = Intent(this, CollectionDetailActivity::class.java).apply {
@@ -375,7 +392,16 @@ class HistoryActivity : AppCompatActivity() {
                         }
                     }
 
-                    if (isAlreadySynced) {
+                    val lastError = CloudSyncManager.getDatasetErrors(this@HistoryActivity)[dataset.name]
+
+                    if (!isAlreadySynced && lastError != null) {
+                        AlertDialog.Builder(this)
+                            .setTitle(R.string.sync_last_error_title)
+                            .setMessage(getString(R.string.sync_last_error_msg, dataset.name, lastError))
+                            .setPositiveButton(R.string.retry_action) { _, _ -> startSync() }
+                            .setNegativeButton(R.string.cancel, null)
+                            .show()
+                    } else if (isAlreadySynced) {
                         AlertDialog.Builder(this)
                             .setTitle(R.string.collection_already_synced_title)
                             .setMessage(getString(R.string.collection_already_synced_msg, dataset.name))
