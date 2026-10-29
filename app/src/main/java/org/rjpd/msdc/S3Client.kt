@@ -1,5 +1,6 @@
 package org.rjpd.msdc
 
+import android.annotation.SuppressLint
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -41,7 +42,6 @@ import org.xml.sax.InputSource
 import timber.log.Timber
 
 private const val TAG = "S3Client"
-private const val MAX_ATTEMPTS = 10
 private const val MAX_BACKOFF_MS = 60_000L
 private const val MAX_CLOCK_SKEW_MS = 15 * 60_000L
 private val RETRYABLE_CODES = setOf(
@@ -106,6 +106,7 @@ class S3Client(
     private val accessKey: String,
     private val secretKey: String,
     trustedCertificate: X509Certificate? = null,
+    private val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
     private val retryBaseDelayMs: Long = 1000L
 ) {
     private val endpointUrl: HttpUrl = endpoint.toHttpUrl()
@@ -291,7 +292,7 @@ class S3Client(
                 throw e
             } catch (e: Exception) {
                 val retryable = (e is S3Exception && e.retryable) || (e is IOException && e !is FileChangedException)
-                if (!retryable || attempt >= MAX_ATTEMPTS) throw e
+                if (!retryable || attempt >= maxAttempts) throw e
                 Timber.tag(TAG).w("Attempt $attempt failed, retrying: ${e.javaClass.simpleName}: ${e.message}")
                 if (!(e is S3Exception && e.code == "RequestTimeTooSkewed")) {
                     delay(backoffMs(attempt))
@@ -305,6 +306,8 @@ class S3Client(
         (minOf(MAX_BACKOFF_MS, retryBaseDelayMs shl minOf(attempt - 1, 16)) * Random.nextDouble(0.5, 1.0)).toLong()
 
     companion object {
+        const val DEFAULT_MAX_ATTEMPTS = 10
+
         // HTTP/1.1 only: against RustFS behind Caddy, HTTP/2 dropped more uploads than HTTP/1.1,
         // and one dropped HTTP/2 connection fails every request multiplexed on it.
         private val baseClient: OkHttpClient = OkHttpClient.Builder()
@@ -328,6 +331,8 @@ class S3Client(
         fun fetchServerCertificate(endpoint: String): X509Certificate {
             val url = endpoint.toHttpUrl()
             var presented: Array<X509Certificate>? = null
+            // Rejects every handshake: it only records the chain so the user can review it before pinning.
+            @SuppressLint("CustomX509TrustManager")
             val capturing = object : X509TrustManager {
                 override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = throw CertificateException()
                 override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {

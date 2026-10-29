@@ -40,6 +40,12 @@
             app:key="cloud_storage_folder"
             app:title="@string/cloud_storage_folder_title"
             app:summary="@string/cloud_storage_folder_not_set" />
+
+        <Preference
+            app:key="s3_destinations"
+            app:title="@string/s3_destinations_title"
+            app:summary="@string/s3_destinations_summary"
+            app:fragment="org.rjpd.msdc.S3DestinationsFragment" />
     </PreferenceCategory>
 
     <PreferenceCategory

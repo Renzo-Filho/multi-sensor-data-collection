@@ -10,6 +10,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.fragment.app.Fragment
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.ListPreference
 import androidx.preference.Preference
@@ -18,7 +19,7 @@ import androidx.preference.PreferenceManager
 
 private const val PREF_CLOUD_STORAGE_FOLDER = "cloud_storage_folder"
 
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPreferenceStartFragmentCallback {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +39,20 @@ class SettingsActivity : AppCompatActivity() {
                 .commit()
         }
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+    }
+
+    override fun onPreferenceStartFragment(caller: PreferenceFragmentCompat, pref: Preference): Boolean {
+        val fragmentClass = pref.fragment ?: return false
+        openFragment(supportFragmentManager.fragmentFactory.instantiate(classLoader, fragmentClass), pref.extras)
+        return true
+    }
+
+    fun openFragment(fragment: Fragment, args: Bundle) {
+        fragment.arguments = args
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.settings, fragment)
+            .addToBackStack(null)
+            .commit()
     }
 
     class SettingsFragment : PreferenceFragmentCompat() {
